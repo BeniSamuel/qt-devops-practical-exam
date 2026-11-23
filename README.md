@@ -15,7 +15,37 @@ SSH user is `devops`; VM addresses are `192.168.160.204` through `.207`. Passwor
 
 ## Infrastructure status
 
-[Terraform instructions](iac/README.md) document the inspected template and verified static VM outputs. All four VMs are in pool `exam-c4` with 4 vCPU, 4 GB RAM, 30 GB disks, and openSUSE Leap 16.0. The Docker host is `.204`; master `.205`; workers `.206` and `.207`. The clean Ansible bootstrap made all three Kubernetes nodes Ready, but the current pod stability gate still needs resolution: kube-proxy/Flannel restarts remain high.
+[Terraform instructions](iac/README.md) document the inspected template and verified static VM outputs. All four VMs are in pool `exam-c4` with 4 vCPU, 4 GB RAM, 30 GB disks, and openSUSE Leap 16.0. The Docker host is `.204`; master `.205`; workers `.206` and `.207`. The final Ansible run has all three Kubernetes nodes Ready.
+
+## Task 3: Kubernetes with Ansible
+
+Final cluster verification (23 November 2026):
+
+```text
+NAME              STATUS   ROLES           AGE   VERSION    INTERNAL-IP       OS-IMAGE             CONTAINER-RUNTIME
+c2-k8s-master     Ready    control-plane   77m   v1.31.14   192.168.160.205   openSUSE Leap 16.0   containerd://1.7.33
+c2-k8s-worker-1   Ready    <none>           76m   v1.31.14   192.168.160.206   openSUSE Leap 16.0   containerd://1.7.33
+c2-k8s-worker-2   Ready    <none>           76m   v1.31.14   192.168.160.207   openSUSE Leap 16.0   containerd://1.7.33
+```
+
+The system pods were Running: Flannel 3/3, kube-proxy 3/3, CoreDNS 2/2, etcd, kube-apiserver, controller-manager, and scheduler. The non-zero RESTARTS shown in that snapshot date from the cgroup-driver correction; they were not increasing after the final fix. A temporary three-replica `nettest` with pod anti-affinity scheduled one pod on each node; a cross-node `wget` returned the NGINX HTML page, then the deployment was deleted.
+
+The second idempotence run completed with `changed=0` and `failed=0`:
+
+```text
+c2-k8s-master    ok=28 changed=0 unreachable=0 failed=0 skipped=2
+c2-k8s-worker-1  ok=21 changed=0 unreachable=0 failed=0 skipped=2
+c2-k8s-worker-2  ok=21 changed=0 unreachable=0 failed=0 skipped=2
+```
+
+Run from the repository root with the inventory at `ansible/inventory.ini`:
+
+```powershell
+$repo=(Resolve-Path .).Path
+docker run --rm -e ANSIBLE_HOST_KEY_CHECKING=False -v "${repo}:/workspace" -w /workspace/ansible qt-ansible:exam-c4 sh -lc 'cp /workspace/iac/id_ed25519_exam /tmp/exam_key && chmod 600 /tmp/exam_key && /opt/venv/bin/ansible-playbook -i inventory.ini -e ansible_ssh_private_key_file=/tmp/exam_key site.yml'
+```
+
+The root cause was a version-1 `/etc/containerd/config.toml`: editing its text did not change the effective configuration. Comparing `containerd config dump` (`SystemdCgroup = false`) with kubelet's `cgroupDriver: systemd` exposed the mismatch. `site.yml` now regenerates the config when necessary, sets `SystemdCgroup = true`, restarts containerd before kubelet, and asserts the effective value. `ansible/reset.yml` is retained for future rebuilds; it was not run after this final fix.
 
 ## Docker Compose deployment
 

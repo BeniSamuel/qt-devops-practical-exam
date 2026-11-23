@@ -77,43 +77,48 @@
         name: [kubeadm, kubelet, kubectl]
         state: present
 
-    - name: Generate containerd configuration
-      ansible.builtin.shell: containerd config default > /etc/containerd/config.toml
-      args:
-        creates: /etc/containerd/config.toml
-
-    - name: Check for the containerd runc options section
-      ansible.builtin.shell: grep -Eq '^\[plugins\."io\.containerd\.grpc\.v1\.cri"\.containerd\.runtimes\.runc\.options\]$' /etc/containerd/config.toml
-      register: containerd_runc_section
+    - name: Check effective containerd cgroup configuration
+      ansible.builtin.shell: containerd config dump | grep -Eq 'SystemdCgroup[[:space:]]*=[[:space:]]*true'
+      register: effective_cgroup
       changed_when: false
       failed_when: false
 
-    - name: Set existing containerd cgroup option
+    - name: Back up legacy containerd configuration
+      ansible.builtin.copy:
+        src: /etc/containerd/config.toml
+        dest: /etc/containerd/config.toml.pre-kubernetes
+        remote_src: true
+        force: false
+        mode: '0644'
+      when: effective_cgroup.rc != 0
+
+    - name: Regenerate containerd configuration when effective settings are wrong
+      ansible.builtin.shell: containerd config default > /etc/containerd/config.toml
+      when: effective_cgroup.rc != 0
+
+    - name: Set containerd systemd cgroup driver
       ansible.builtin.lineinfile:
         path: /etc/containerd/config.toml
         regexp: '^[ \t]*SystemdCgroup[ \t]*='
         line: 'SystemdCgroup = true'
         insertafter: '^\[plugins\."io\.containerd\.grpc\.v1\.cri"\.containerd\.runtimes\.runc\.options\]$'
-      when: containerd_runc_section.rc == 0
-      notify:
-        - Restart containerd
-        - Restart kubelet
+      notify: Restart containerd
 
-    - name: Add containerd runc options with systemd cgroups
-      ansible.builtin.blockinfile:
+    - name: Set Kubernetes pause sandbox image
+      ansible.builtin.lineinfile:
         path: /etc/containerd/config.toml
-        marker: '# {mark} KUBERNETES SYSTEMD CGROUP'
-        insertafter: EOF
-        block: |
-          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-            SystemdCgroup = true
-      when: containerd_runc_section.rc != 0
-      notify:
-        - Restart containerd
-        - Restart kubelet
+        regexp: '^[ \t]*sandbox_image[ \t]*='
+        line: 'sandbox_image = "registry.k8s.io/pause:3.10"'
+      notify: Restart containerd
 
     - name: Apply runtime changes before kubelet starts
       ansible.builtin.meta: flush_handlers
+
+    - name: Assert effective containerd cgroup driver
+      ansible.builtin.shell: containerd config dump | grep -E 'SystemdCgroup[[:space:]]*=[[:space:]]*true'
+      register: effective_cgroup_assert
+      changed_when: false
+      failed_when: effective_cgroup_assert.rc != 0
 
     - name: Enable containerd and kubelet
       ansible.builtin.systemd:

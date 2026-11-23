@@ -24,6 +24,7 @@ crash.*.log
 *.tfplan
 *.plan
 /iac/known_hosts_exam
+k8s/secret.yaml
 
 # OS and editor files
 .DS_Store

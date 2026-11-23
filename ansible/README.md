@@ -21,3 +21,5 @@ docker run --rm -it -e ANSIBLE_HOST_KEY_CHECKING=False -v "${repo}:/workspace" -
 ```
 
 Containerd's runc options persist `SystemdCgroup = true` before kubelet is started. `site.yml` guards initialization with `/etc/kubernetes/admin.conf` and worker joins with `/etc/kubernetes/kubelet.conf`.
+
+Root cause note: the original version-1 `/etc/containerd/config.toml` was converted by containerd at startup, so editing its `SystemdCgroup` line did not change the effective runtime. Diagnosis compared `containerd config dump` with kubelet's `cgroupDriver: systemd`; the playbook now checks the effective dump, backs up and regenerates legacy config only when needed, sets `SystemdCgroup = true`, uses pause image `registry.k8s.io/pause:3.10`, restarts containerd through a handler, and asserts the effective setting.
