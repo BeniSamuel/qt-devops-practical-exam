@@ -40,6 +40,29 @@ variable "network_bridge" {
   default     = "vmbr0"
 }
 
+variable "vm_ips_static" {
+  description = "Static IPv4 address assigned to each exam VM through cloud-init."
+  type        = map(string)
+  default = {
+    c2-docker-host  = "192.168.160.204"
+    c2-k8s-master   = "192.168.160.205"
+    c2-k8s-worker-1 = "192.168.160.206"
+    c2-k8s-worker-2 = "192.168.160.207"
+  }
+}
+
+variable "vm_prefix_length" {
+  description = "IPv4 subnet prefix for the static VM addresses."
+  type        = number
+  default     = 24
+}
+
+variable "vm_gateway" {
+  description = "Default IPv4 gateway for the exam VMs."
+  type        = string
+  default     = "192.168.160.1"
+}
+
 variable "vm_names" {
   description = "All required VM names."
   type        = list(string)

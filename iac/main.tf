@@ -55,7 +55,8 @@ resource "proxmox_virtual_environment_vm" "exam" {
 
     ip_config {
       ipv4 {
-        address = "dhcp"
+        address = "${var.vm_ips_static[each.key]}/${var.vm_prefix_length}"
+        gateway = var.vm_gateway
       }
     }
 

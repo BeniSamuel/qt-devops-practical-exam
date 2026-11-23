@@ -23,6 +23,7 @@ crash.*.log
 .tools/
 *.tfplan
 *.plan
+/iac/known_hosts_exam
 
 # OS and editor files
 .DS_Store

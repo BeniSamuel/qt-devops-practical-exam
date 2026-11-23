@@ -15,7 +15,7 @@ SSH username, VM IPs, deployment URLs, and screenshot descriptions will be added
 
 ## Infrastructure status
 
-[Terraform instructions](iac/README.md) document the inspected template, sensitive input handling, first-VM apply, and verification commands. VM `c2-docker-host` (VMID 4201) has been created in `exam-c4` with 4 cores, 4096 MB RAM, a 30 GB disk, and the template's `x86-64-v2-AES` CPU type. Its running guest agent confirms openSUSE Leap 16.0, but `eth0` has no IPv4 address yet; DHCP and SSH verification remain. The three Kubernetes VMs have not been applied. The intended SSH username is `devops`; its private key and password remain outside Git.
+[Terraform instructions](iac/README.md) document the inspected template, sensitive input handling, first-VM apply, and verification commands. VM `c2-docker-host` (VMID 4201) has been created in `exam-c4` with 4 cores, 4096 MB RAM, a 30 GB disk, and the template's `x86-64-v2-AES` CPU type. Its guest agent and SSH confirm openSUSE Leap 16.0. Because DHCP did not assign an IPv4 address, the VM was replaced with static cloud-init address `192.168.160.204/24`; ping, SSH as `devops`, and the guest agent all confirm that address works. The three Kubernetes VMs have not been applied. The private SSH key and VM password remain outside Git.
 
 ## Docker Compose deployment
 

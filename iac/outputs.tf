@@ -1,7 +1,17 @@
 locals {
-  # The QEMU guest agent reports loopback and other interfaces too. If the
-  # agent does not report an address, use the MAC output to find the DHCP lease.
   vm_ips = {
+    for name, vm in proxmox_virtual_environment_vm.exam : name => var.vm_ips_static[name]
+  }
+}
+
+output "vm_ips" {
+  description = "Static IPv4 addresses configured for the selected VMs through cloud-init."
+  value       = local.vm_ips
+}
+
+output "vm_guest_ips" {
+  description = "IPv4 addresses actually reported by the QEMU guest agent, for verification."
+  value = {
     for name, vm in proxmox_virtual_environment_vm.exam : name => try([
       for ip in flatten(vm.ipv4_addresses) : ip
       if !startswith(ip, "127.") && !startswith(ip, "169.254.")
@@ -9,13 +19,8 @@ locals {
   }
 }
 
-output "vm_ips" {
-  description = "IPv4 addresses reported by the QEMU guest agent; null means use the DHCP lease fallback."
-  value       = local.vm_ips
-}
-
 output "vm_macs" {
-  description = "MAC addresses for DHCP lease lookup if the guest agent has no IP."
+  description = "MAC addresses for network troubleshooting."
   value = {
     for name, vm in proxmox_virtual_environment_vm.exam : name => try(vm.network_device[0].mac_address, null)
   }

@@ -5,6 +5,14 @@ pool_id          = "exam-c4"
 template_vmid    = 9004
 datastore_id     = "local-lvm"
 network_bridge   = "vmbr0"
+vm_prefix_length = 24
+vm_gateway       = "192.168.160.1"
+vm_ips_static = {
+  c2-docker-host   = "192.168.160.204"
+  c2-k8s-master    = "192.168.160.205"
+  c2-k8s-worker-1 = "192.168.160.206"
+  c2-k8s-worker-2 = "192.168.160.207"
+}
 vm_user          = "devops"
 cpu_cores        = 4
 memory_mb        = 4096

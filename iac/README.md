@@ -1,6 +1,6 @@
 # Proxmox Terraform infrastructure
 
-Template 9004 was confirmed through the Proxmox API as `opensuse-leap-16`: 30 GB `scsi0` on `local-lvm`, cloud-init on `ide2`, guest-agent flag enabled, CPU type `x86-64-v2-AES`, and DHCP on `vmbr0`. The template's 2 cores and 2048 MB are overridden to 4 cores and 4096 MB, while its CPU type and serial console are retained. VMIDs 4201–4204 were free before the first apply.
+Template 9004 was confirmed through the Proxmox API as `opensuse-leap-16`: 30 GB `scsi0` on `local-lvm`, cloud-init on `ide2`, guest-agent flag enabled, CPU type `x86-64-v2-AES`, and `vmbr0` networking. The template's 2 cores and 2048 MB are overridden to 4 cores and 4096 MB, while its CPU type and serial console are retained. VMIDs 4201–4204 were free before the first apply.
 
 The default `enabled_vms` creates **only `c2-docker-host`**. After that VM's OS and SSH access are verified, select all four names for the next plan. Do not use `-target` for the remaining VMs.
 
@@ -34,12 +34,15 @@ Review the plan before applying. Terraform plan and state files are ignored beca
 ```powershell
 docker run @dockerArgs output vm_ids
 docker run @dockerArgs output vm_ips
+docker run @dockerArgs output vm_guest_ips
 docker run @dockerArgs output vm_macs
 ssh -i iac/id_ed25519_exam devops@<docker-host-ip> hostname
 ssh -i iac/id_ed25519_exam devops@<docker-host-ip> 'cat /etc/os-release'
 ssh -i iac/id_ed25519_exam devops@<docker-host-ip> 'systemctl is-active qemu-guest-agent'
 ```
 
-The first apply inherited Proxmox's `qemu64` CPU default and did not boot correctly. Terraform now sets the template's `x86-64-v2-AES` CPU type. VM 4201 was replaced; its QEMU guest agent runs and `/etc/os-release` confirms openSUSE Leap 16.0. A refresh-only apply still reports `vm_ips.c2-docker-host = null` because `eth0` has no IPv4 address. The replacement VM's MAC is `BC:24:11:B0:36:A7`. Diagnose DHCP from the serial console, then refresh Terraform outputs. Do not infer an IP from the Proxmox host address.
+The first apply inherited Proxmox's `qemu64` CPU default and did not boot correctly. Terraform now sets the template's `x86-64-v2-AES` CPU type. The next clone booted and its QEMU guest agent confirmed `/etc/os-release` as openSUSE Leap 16.0, but DHCP did not assign `eth0` an IPv4 address. Terraform now sets static cloud-init addresses: Docker host `.204`, master `.205`, workers `.206` and `.207`, all under `192.168.160.0/24` with gateway `.1`. VM 4201 was replaced again with this setting. `vm_ips` reports the configured addresses from `vm_ips_static`; `vm_guest_ips` reports what the guest agent actually observes. Both now show `192.168.160.204` for the Docker host.
+
+After the two-minute wait, `192.168.160.204` answered ping (2/2), TCP port 22 opened, and key-based SSH as `devops` succeeded. SSH confirmed hostname `c2-docker-host`, `eth0` address `192.168.160.204/24`, openSUSE Leap 16.0, and active `qemu-guest-agent`. Only VM 4201 exists so far.
 
 After the first VM is fully verified, set `TF_VAR_enabled_vms` to a JSON array of all four names, review a new plan showing only three additions, and apply it. Confirm all four VM IDs, pool membership, disk sizes, hostnames, SSH access, and guest IPs before calling Task 1 complete.
