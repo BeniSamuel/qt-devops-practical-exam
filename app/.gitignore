@@ -1,0 +1,16 @@
+# build output / dependencies
+backend/target/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# local environment files (commit only the .env.example files)
+.env
+.env.*
+!.env.example
+
+# editors / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store

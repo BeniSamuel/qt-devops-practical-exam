@@ -1,0 +1,28 @@
+# Exam credentials and local configuration
+doc/
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Terraform/OpenTofu local state and credentials
+**/.terraform/
+*.tfstate*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+
+# Local build output
+**/node_modules/
+**/.next/
+**/target/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

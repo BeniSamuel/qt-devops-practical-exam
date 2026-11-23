@@ -1,0 +1,17 @@
+.git
+**/.git
+doc
+**/.env
+**/.env.*
+!**/.env.example
+**/node_modules
+**/.next
+**/target
+**/*.pem
+**/*.key
+**/*.tfstate*
+**/*.tfvars
+monitoring
+iac
+ansible
+k8s
