@@ -57,4 +57,8 @@ The Docker VM's OS and Docker installation steps will be documented after the fi
 - Pulled both application images back from Docker Hub, recreated the full stack with `--no-build`, and confirmed the frontend, health endpoint, and seeded admin login still worked. PostgreSQL retained its data across container recreation.
 - Recreated the backend while Redis was stopped. Backend and frontend health checks passed, and `/api/health` reported `database=up, cache=down`. Redis was restored afterward.
 
-These checks ran on the laptop's local Compose stack. VM deployment and its external URL are still pending.
+These checks ran on the laptop's local Compose stack.
+
+### Docker VM deployment
+
+On `c2-docker-host` (`192.168.160.204`), openSUSE Leap 16.0 installed Docker 29.7.2 and Compose 2.33.1 from the `docker` and `docker-compose` zypper packages. Docker is enabled, and `devops` is in the `docker` group. The VM pulled the versioned images from Docker Hub and started all five services. Because SELinux is enforcing on this host, the NGINX bind mount uses the `:Z` relabel option. External verification returned HTTP 200 for `http://192.168.160.204/` and `{"status":"ok","database":"up","cache":"up"}` from `/api/health`.
