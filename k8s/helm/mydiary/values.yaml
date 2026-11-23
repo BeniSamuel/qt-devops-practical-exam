@@ -4,5 +4,8 @@ backendImage: benisamuel/mydiary-backend:exam-c4-v2
 postgresImage: postgres:16
 redisImage: redis:7-alpine
 postgresStorage: 10Gi
+postgresPvName: postgres-pv-helm
+postgresPath: /var/lib/qt-mydiary/postgres-helm
+storageClassName: local-postgres-helm
 nodePort: 30080
 javaToolOptions: -Xms128m -Xmx384m
