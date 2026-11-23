@@ -1,0 +1,42 @@
+---
+- name: Reset the tainted Kubernetes cluster state
+  hosts: k8s
+  become: true
+  tasks:
+    - name: Stop kubelet before reset
+      ansible.builtin.systemd:
+        name: kubelet
+        state: stopped
+      failed_when: false
+
+    - name: Reset kubeadm state
+      ansible.builtin.command: kubeadm reset -f
+      register: kubeadm_reset
+      changed_when: true
+
+    - name: Remove Kubernetes and CNI state
+      ansible.builtin.file:
+        path: '{{ item }}'
+        state: absent
+      loop:
+        - /etc/cni/net.d
+        - /var/lib/etcd
+        - /etc/kubernetes
+
+    - name: Remove all runtime containers
+      ansible.builtin.shell: |
+        ids=$(crictl --runtime-endpoint unix:///run/containerd/containerd.sock ps -a -q)
+        test -z "$ids" || crictl --runtime-endpoint unix:///run/containerd/containerd.sock rm -f $ids
+      changed_when: true
+
+    - name: Remove all runtime sandboxes
+      ansible.builtin.shell: |
+        ids=$(crictl --runtime-endpoint unix:///run/containerd/containerd.sock pods -q)
+        test -z "$ids" || crictl --runtime-endpoint unix:///run/containerd/containerd.sock rmp -f $ids
+      changed_when: true
+
+    - name: Restart containerd after reset
+      ansible.builtin.systemd:
+        name: containerd
+        state: restarted
+        enabled: true

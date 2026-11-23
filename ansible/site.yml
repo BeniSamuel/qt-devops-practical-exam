@@ -1,0 +1,199 @@
+---
+- name: Prepare openSUSE nodes and install Kubernetes components
+  hosts: k8s
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Import Kubernetes repository signing key
+      ansible.builtin.command: rpm --import https://pkgs.k8s.io/core:/stable:/v1.31/rpm/repodata/repomd.xml.key
+      changed_when: false
+
+    - name: Refresh zypper metadata
+      ansible.builtin.command: zypper --non-interactive refresh
+      changed_when: false
+
+    - name: Install Kubernetes prerequisites
+      ansible.builtin.package:
+        name: [ca-certificates, curl, conntrack-tools, containerd, ebtables, ethtool, iproute2, socat]
+        state: present
+
+    - name: Disable swap immediately
+      ansible.builtin.command: swapoff -a
+      changed_when: false
+
+    - name: Disable swap entries in fstab
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^([^#].*\s+swap\s+.*)$'
+        replace: '# disabled for Kubernetes: \1'
+
+    - name: Load required kernel modules
+      ansible.builtin.shell: "modprobe {{ item }}"
+      loop: [overlay, br_netfilter]
+      changed_when: false
+
+    - name: Persist required kernel modules
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/k8s.conf
+        mode: '0644'
+        content: "overlay\nbr_netfilter\n"
+
+    - name: Configure Kubernetes sysctl values
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-kubernetes.conf
+        mode: '0644'
+        content: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.ipv4.ip_forward = 1
+      notify: Reload sysctl
+
+    - name: Apply Kubernetes sysctl values immediately
+      ansible.builtin.command: sysctl -w {{ item }}
+      loop:
+        - net.bridge.bridge-nf-call-iptables=1
+        - net.bridge.bridge-nf-call-ip6tables=1
+        - net.ipv4.ip_forward=1
+      changed_when: false
+
+    - name: Disable firewalld for the exam cluster
+      ansible.builtin.systemd:
+        name: firewalld
+        state: stopped
+        enabled: false
+      failed_when: false
+
+    - name: Add Kubernetes package repository
+      ansible.builtin.command: zypper --non-interactive addrepo --check https://pkgs.k8s.io/core:/stable:/v1.31/rpm/ kubernetes
+      args:
+        creates: /etc/zypp/repos.d/kubernetes.repo
+
+    - name: Refresh Kubernetes repository
+      ansible.builtin.command: zypper --non-interactive --gpg-auto-import-keys refresh kubernetes
+      changed_when: false
+
+    - name: Install kubeadm, kubelet, and kubectl
+      ansible.builtin.package:
+        name: [kubeadm, kubelet, kubectl]
+        state: present
+
+    - name: Generate containerd configuration
+      ansible.builtin.shell: containerd config default > /etc/containerd/config.toml
+      args:
+        creates: /etc/containerd/config.toml
+
+    - name: Check for the containerd runc options section
+      ansible.builtin.shell: grep -Eq '^\[plugins\."io\.containerd\.grpc\.v1\.cri"\.containerd\.runtimes\.runc\.options\]$' /etc/containerd/config.toml
+      register: containerd_runc_section
+      changed_when: false
+      failed_when: false
+
+    - name: Set existing containerd cgroup option
+      ansible.builtin.lineinfile:
+        path: /etc/containerd/config.toml
+        regexp: '^[ \t]*SystemdCgroup[ \t]*='
+        line: 'SystemdCgroup = true'
+        insertafter: '^\[plugins\."io\.containerd\.grpc\.v1\.cri"\.containerd\.runtimes\.runc\.options\]$'
+      when: containerd_runc_section.rc == 0
+      notify:
+        - Restart containerd
+        - Restart kubelet
+
+    - name: Add containerd runc options with systemd cgroups
+      ansible.builtin.blockinfile:
+        path: /etc/containerd/config.toml
+        marker: '# {mark} KUBERNETES SYSTEMD CGROUP'
+        insertafter: EOF
+        block: |
+          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+            SystemdCgroup = true
+      when: containerd_runc_section.rc != 0
+      notify:
+        - Restart containerd
+        - Restart kubelet
+
+    - name: Apply runtime changes before kubelet starts
+      ansible.builtin.meta: flush_handlers
+
+    - name: Enable containerd and kubelet
+      ansible.builtin.systemd:
+        name: '{{ item }}'
+        enabled: true
+        state: started
+      loop: [containerd, kubelet]
+
+  handlers:
+    - name: Restart containerd
+      ansible.builtin.systemd:
+        name: containerd
+        state: restarted
+
+    - name: Restart kubelet
+      ansible.builtin.systemd:
+        name: kubelet
+        state: restarted
+
+    - name: Reload sysctl
+      ansible.builtin.command: sysctl --system
+      changed_when: false
+
+- name: Initialize the control plane
+  hosts: master
+  become: true
+  tasks:
+    - name: Initialize kubeadm once
+      ansible.builtin.command: >-
+        kubeadm init --apiserver-advertise-address=192.168.160.205
+        --pod-network-cidr=10.244.0.0/16
+        --cri-socket=unix:///run/containerd/containerd.sock
+        --ignore-preflight-errors=SystemVerification,FileContent--proc-sys-net-ipv4-ip_forward
+      args:
+        creates: /etc/kubernetes/admin.conf
+
+    - name: Create kubeconfig directory for devops
+      become_user: devops
+      ansible.builtin.file:
+        path: /home/devops/.kube
+        state: directory
+        mode: '0700'
+
+    - name: Install kubeconfig for devops
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/devops/.kube/config
+        remote_src: true
+        owner: devops
+        group: users
+        mode: '0600'
+
+    - name: Apply Flannel CNI
+      ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+      register: flannel_apply
+      changed_when: "'created' in flannel_apply.stdout or 'configured' in flannel_apply.stdout"
+
+    - name: Get worker join command
+      ansible.builtin.command: kubeadm token create --print-join-command
+      register: join_command
+      changed_when: false
+
+- name: Join worker nodes
+  hosts: workers
+  become: true
+  tasks:
+    - name: Join workers once
+      ansible.builtin.command: '{{ hostvars[groups["master"][0]].join_command.stdout }} --cri-socket=unix:///run/containerd/containerd.sock --ignore-preflight-errors=SystemVerification'
+      args:
+        creates: /etc/kubernetes/kubelet.conf
+
+- name: Verify cluster
+  hosts: master
+  become: true
+  tasks:
+    - name: Get node status
+      ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes -o wide
+      register: nodes
+      changed_when: false
+
+    - name: Print node status
+      ansible.builtin.debug:
+        var: nodes.stdout_lines

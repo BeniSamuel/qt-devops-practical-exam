@@ -4,18 +4,18 @@ The exam organizers confirmed that the brief's Go, MongoDB, Valkey, and Vite sta
 
 ## Repository layout
 
-- `iac/` — Terraform configuration for four Proxmox VMs; the first VM is under verification.
-- `ansible/` — Kubernetes cluster automation, pending the first VM's verified OS.
+- `iac/` — Terraform configuration for four verified Proxmox VMs.
+- `ansible/` — openSUSE Kubernetes automation, clean reset playbook, and cgroup fix.
 - `docker/` — Compose deployment and application Dockerfiles.
 - `k8s/` — Kubernetes application manifests.
 - `app/` — supplied MyDiary source.
 - `monitoring/` — VM and application evidence captured during deployment.
 
-SSH username, VM IPs, deployment URLs, and screenshot descriptions will be added after the corresponding infrastructure exists. Passwords, private keys, API tokens, and the exam document must stay outside Git.
+SSH user is `devops`; VM addresses are `192.168.160.204` through `.207`. Passwords, private keys, API tokens, and the exam document must stay outside Git.
 
 ## Infrastructure status
 
-[Terraform instructions](iac/README.md) document the inspected template, sensitive input handling, first-VM apply, and verification commands. VM `c2-docker-host` (VMID 4201) has been created in `exam-c4` with 4 cores, 4096 MB RAM, a 30 GB disk, and the template's `x86-64-v2-AES` CPU type. Its guest agent and SSH confirm openSUSE Leap 16.0. Because DHCP did not assign an IPv4 address, the VM was replaced with static cloud-init address `192.168.160.204/24`; ping, SSH as `devops`, and the guest agent all confirm that address works. The three Kubernetes VMs have not been applied. The private SSH key and VM password remain outside Git.
+[Terraform instructions](iac/README.md) document the inspected template and verified static VM outputs. All four VMs are in pool `exam-c4` with 4 vCPU, 4 GB RAM, 30 GB disks, and openSUSE Leap 16.0. The Docker host is `.204`; master `.205`; workers `.206` and `.207`. The clean Ansible bootstrap made all three Kubernetes nodes Ready, but the current pod stability gate still needs resolution: kube-proxy/Flannel restarts remain high.
 
 ## Docker Compose deployment
 

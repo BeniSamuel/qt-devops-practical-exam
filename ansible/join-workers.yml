@@ -1,0 +1,46 @@
+---
+- name: Read a fresh worker join command from the existing master
+  hosts: master
+  become: true
+  tasks:
+    - name: Create worker join command
+      ansible.builtin.command: kubeadm token create --print-join-command
+      register: join_command
+      changed_when: false
+
+- name: Join workers only when their prior join is incomplete
+  hosts: workers
+  become: true
+  tasks:
+    - name: Check worker join artifacts
+      ansible.builtin.stat:
+        path: '{{ item }}'
+      loop:
+        - /etc/kubernetes/kubelet.conf
+        - /etc/kubernetes/bootstrap-kubelet.conf
+        - /var/lib/kubelet/pki/kubelet-client-current.pem
+      register: worker_join_files
+
+    - name: Remove incomplete worker join artifacts
+      ansible.builtin.file:
+        path: '{{ item.item }}'
+        state: absent
+      loop: '{{ worker_join_files.results }}'
+      when: >-
+        worker_join_files.results[0].stat.exists and
+        (not worker_join_files.results[1].stat.exists or
+        not worker_join_files.results[2].stat.exists)
+
+    - name: Join worker once
+      ansible.builtin.command: >-
+        {{ hostvars[groups['master'][0]].join_command.stdout }}
+        --cri-socket=unix:///run/containerd/containerd.sock
+        --ignore-preflight-errors=SystemVerification
+      args:
+        creates: /etc/kubernetes/kubelet.conf
+
+    - name: Ensure kubelet is enabled and started
+      ansible.builtin.systemd:
+        name: kubelet
+        enabled: true
+        state: started

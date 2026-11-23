@@ -1,0 +1,50 @@
+---
+- name: Persist systemd cgroups and restart runtimes
+  hosts: k8s
+  become: true
+  tasks:
+    - name: Generate containerd configuration if missing
+      ansible.builtin.shell: containerd config default > /etc/containerd/config.toml
+      args:
+        creates: /etc/containerd/config.toml
+
+    - name: Check for the containerd runc options section
+      ansible.builtin.shell: grep -Eq '^\[plugins\."io\.containerd\.grpc\.v1\.cri"\.containerd\.runtimes\.runc\.options\]$' /etc/containerd/config.toml
+      register: containerd_runc_section
+      changed_when: false
+      failed_when: false
+
+    - name: Set existing containerd cgroup option
+      ansible.builtin.lineinfile:
+        path: /etc/containerd/config.toml
+        regexp: '^[ \t]*SystemdCgroup[ \t]*='
+        line: 'SystemdCgroup = true'
+        insertafter: '^\[plugins\."io\.containerd\.grpc\.v1\.cri"\.containerd\.runtimes\.runc\.options\]$'
+      when: containerd_runc_section.rc == 0
+      notify:
+        - Restart containerd
+        - Restart kubelet
+
+    - name: Add containerd runc options with systemd cgroups
+      ansible.builtin.blockinfile:
+        path: /etc/containerd/config.toml
+        marker: '# {mark} KUBERNETES SYSTEMD CGROUP'
+        insertafter: EOF
+        block: |
+          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+            SystemdCgroup = true
+      when: containerd_runc_section.rc != 0
+      notify:
+        - Restart containerd
+        - Restart kubelet
+
+  handlers:
+    - name: Restart containerd
+      ansible.builtin.systemd:
+        name: containerd
+        state: restarted
+
+    - name: Restart kubelet
+      ansible.builtin.systemd:
+        name: kubelet
+        state: restarted
