@@ -1,0 +1,14 @@
+Task 1 Terraform apply (static addresses, 2026-11-23)
+
+Apply complete! Resources: 3 added, 0 changed, 0 destroyed.
+
+VM outputs:
+c2-docker-host   VMID 4201  192.168.160.204
+c2-k8s-master    VMID 4202  192.168.160.205
+c2-k8s-worker-1  VMID 4203  192.168.160.206
+c2-k8s-worker-2  VMID 4204  192.168.160.207
+
+Verification over SSH:
+c2-k8s-master    hostname c2-k8s-master    openSUSE Leap 16.0    4 vCPU    3916 MB    30G
+c2-k8s-worker-1  hostname c2-k8s-worker-1  openSUSE Leap 16.0    4 vCPU    3916 MB    30G
+c2-k8s-worker-2  hostname c2-k8s-worker-2  openSUSE Leap 16.0    4 vCPU    3916 MB    30G
