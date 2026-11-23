@@ -1,0 +1,107 @@
+name: qt-mydiary
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - app
+    mem_limit: 64m
+    restart: unless-stopped
+
+  frontend:
+    image: ${DOCKERHUB_USER:?Set DOCKERHUB_USER}/mydiary-frontend:${IMAGE_TAG:?Set IMAGE_TAG}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        NEXT_PUBLIC_API_URL: ""
+    environment:
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - app
+    mem_limit: 512m
+    restart: unless-stopped
+
+  backend:
+    image: ${DOCKERHUB_USER:?Set DOCKERHUB_USER}/mydiary-backend:${IMAGE_TAG:?Set IMAGE_TAG}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    environment:
+      PORT: "8080"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/diary
+      SPRING_DATASOURCE_USERNAME: diary
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      CACHE_TYPE: redis
+      SEED_ENABLED: "true"
+      JAVA_TOOL_OPTIONS: -Xms128m -Xmx512m
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - app
+    mem_limit: 768m
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: diary
+      POSTGRES_USER: diary
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U diary -d diary"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - app
+    mem_limit: 512m
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+    command: ["sh", "-c", "exec redis-server --appendonly no --requirepass \"$$REDIS_PASSWORD\""]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - app
+    mem_limit: 128m
+    restart: unless-stopped
+
+networks:
+  app:
+
+volumes:
+  postgres_data:
