@@ -1,0 +1,180 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.namespace }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mydiary-config
+  namespace: {{ .Values.namespace }}
+data:
+  POSTGRES_DB: diary
+  POSTGRES_USER: diary
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  CACHE_TYPE: redis
+  SEED_ENABLED: "true"
+  CORS_ALLOWED_ORIGINS: http://192.168.160.205:30080,http://192.168.160.206:30080,http://192.168.160.207:30080
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mydiary-secrets
+  namespace: {{ .Values.namespace }}
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: {{ required "postgresPassword is required" .Values.postgresPassword | quote }}
+  REDIS_PASSWORD: {{ required "redisPassword is required" .Values.redisPassword | quote }}
+  JWT_SECRET: {{ required "jwtSecret is required" .Values.jwtSecret | quote }}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-pv
+spec:
+  capacity: {storage: {{ .Values.postgresStorage }}}
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-postgres
+  local: {path: /var/lib/qt-mydiary/postgres}
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - {key: kubernetes.io/hostname, operator: In, values: [c2-k8s-master]}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: {{ .Values.namespace }}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-postgres
+  resources: {requests: {storage: {{ .Values.postgresStorage }}}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: postgres, namespace: {{ .Values.namespace }}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: postgres}}
+  template:
+    metadata: {labels: {app: postgres}}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: c2-k8s-master}
+      tolerations: [{operator: Exists}]
+      containers:
+      - name: postgres
+        image: {{ .Values.postgresImage }}
+        env:
+        - {name: POSTGRES_DB, value: diary}
+        - {name: POSTGRES_USER, value: diary}
+        - {name: POSTGRES_PASSWORD, valueFrom: {secretKeyRef: {name: mydiary-secrets, key: POSTGRES_PASSWORD}}}
+        ports: [{containerPort: 5432}]
+        volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
+        resources: {requests: {cpu: 50m, memory: 256Mi}, limits: {cpu: 250m, memory: 512Mi}}
+        readinessProbe: {exec: {command: [sh, -c, 'pg_isready -U diary -d diary']}, initialDelaySeconds: 10}
+      volumes: [{name: data, persistentVolumeClaim: {claimName: postgres-pvc}}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: postgres, namespace: {{ .Values.namespace }}}
+spec: {selector: {app: postgres}, ports: [{port: 5432}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: redis, namespace: {{ .Values.namespace }}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: redis}}
+  template:
+    metadata: {labels: {app: redis}}
+    spec:
+      containers:
+      - name: redis
+        image: {{ .Values.redisImage }}
+        command: [sh, -c]
+        args: ['exec redis-server --appendonly no --requirepass "$REDIS_PASSWORD"']
+        env: [{name: REDIS_PASSWORD, valueFrom: {secretKeyRef: {name: mydiary-secrets, key: REDIS_PASSWORD}}}]
+        ports: [{containerPort: 6379}]
+        resources: {requests: {cpu: 25m, memory: 32Mi}, limits: {cpu: 100m, memory: 128Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: redis, namespace: {{ .Values.namespace }}}
+spec: {selector: {app: redis}, ports: [{port: 6379}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: backend, namespace: {{ .Values.namespace }}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: backend}}
+  template:
+    metadata: {labels: {app: backend}}
+    spec:
+      containers:
+      - name: backend
+        image: {{ .Values.backendImage }}
+        env:
+        - {name: SPRING_DATASOURCE_URL, value: jdbc:postgresql://postgres:5432/diary}
+        - {name: SPRING_DATASOURCE_USERNAME, value: diary}
+        - {name: SPRING_DATASOURCE_PASSWORD, valueFrom: {secretKeyRef: {name: mydiary-secrets, key: POSTGRES_PASSWORD}}}
+        - {name: REDIS_HOST, value: redis}
+        - {name: REDIS_PORT, value: "6379"}
+        - {name: REDIS_PASSWORD, valueFrom: {secretKeyRef: {name: mydiary-secrets, key: REDIS_PASSWORD}}}
+        - {name: JWT_SECRET, valueFrom: {secretKeyRef: {name: mydiary-secrets, key: JWT_SECRET}}}
+        - {name: CORS_ALLOWED_ORIGINS, valueFrom: {configMapKeyRef: {name: mydiary-config, key: CORS_ALLOWED_ORIGINS}}}
+        - {name: JAVA_TOOL_OPTIONS, value: {{ .Values.javaToolOptions | quote }}}
+        ports: [{containerPort: 8080}]
+        resources: {requests: {cpu: 100m, memory: 384Mi}, limits: {cpu: 500m, memory: 768Mi}}
+        readinessProbe: {httpGet: {path: /api/health, port: 8080}, initialDelaySeconds: 180, periodSeconds: 10}
+        livenessProbe: {httpGet: {path: /actuator/health/liveness, port: 8080}, initialDelaySeconds: 240, periodSeconds: 20}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: backend, namespace: {{ .Values.namespace }}}
+spec: {selector: {app: backend}, ports: [{port: 8080}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: frontend, namespace: {{ .Values.namespace }}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: frontend}}
+  template:
+    metadata: {labels: {app: frontend}}
+    spec:
+      containers:
+      - name: frontend
+        image: {{ .Values.frontendImage }}
+        env: [{name: HOSTNAME, value: 0.0.0.0}, {name: PORT, value: "3000"}]
+        ports: [{containerPort: 3000}]
+        resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 250m, memory: 512Mi}}
+        readinessProbe: {httpGet: {path: /, port: 3000}, initialDelaySeconds: 15}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: frontend, namespace: {{ .Values.namespace }}}
+spec: {selector: {app: frontend}, ports: [{port: 3000}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: nginx, namespace: {{ .Values.namespace }}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: nginx}}
+  template:
+    metadata: {labels: {app: nginx}}
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.27-alpine
+        ports: [{containerPort: 80}]
+        resources: {requests: {cpu: 25m, memory: 32Mi}, limits: {cpu: 100m, memory: 64Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: nginx, namespace: {{ .Values.namespace }}}
+spec: {type: NodePort, selector: {app: nginx}, ports: [{port: 80, nodePort: {{ .Values.nodePort }}}]}

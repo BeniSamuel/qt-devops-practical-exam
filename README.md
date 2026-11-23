@@ -89,6 +89,30 @@ The Docker VM's OS and Docker installation steps will be documented after the fi
 
 These checks ran on the laptop's local Compose stack.
 
+## Task 4: Kubernetes application
+
+The declarative deployment is `k8s/all.yaml` in namespace `qt-go-app`. It uses the versioned Docker Hub images, a local PV/PVC for PostgreSQL, password-protected Redis, resource requests and limits, and liveness/readiness probes. External access is through NGINX NodePort `30080`: `http://192.168.160.205:30080` (the worker addresses `.206` and `.207` also work). CORS explicitly allows all three NodePort origins.
+
+`k8s/secret.example.yaml` contains placeholders only. The live Secret was created on the cluster without committing values:
+
+```bash
+kubectl create secret generic mydiary-secrets -n qt-go-app \
+  --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+  --from-literal=REDIS_PASSWORD="$REDIS_PASSWORD" \
+  --from-literal=JWT_SECRET="$JWT_SECRET" --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f k8s/all.yaml
+```
+
+Persistence proof: a newly registered user returned HTTP 201, the PostgreSQL pod was deleted and recreated from the PVC, and that same user logged in afterward with HTTP 200. Cache proof: scaling Redis to zero left login working (HTTP 200) and `/api/health` returned `{"status":"ok","database":"up","cache":"down"}`; Redis was then restored to one replica. Redis has no PV because it is an optional cache; PostgreSQL is the authoritative store.
+
+The bonus Helm chart is in `k8s/helm/mydiary`. Install it with generated values (do not commit the values file):
+
+```bash
+helm upgrade --install mydiary k8s/helm/mydiary -n qt-go-app --create-namespace \
+  --set postgresPassword="$POSTGRES_PASSWORD" \
+  --set redisPassword="$REDIS_PASSWORD" --set jwtSecret="$JWT_SECRET"
+```
+
 ### Docker VM deployment
 
 On `c2-docker-host` (`192.168.160.204`), openSUSE Leap 16.0 installed Docker 29.7.2 and Compose 2.33.1 from the `docker` and `docker-compose` zypper packages. Docker is enabled, and `devops` is in the `docker` group. The VM pulled the versioned images from Docker Hub and started all five services. Because SELinux is enforcing on this host, the NGINX bind mount uses the `:Z` relabel option. External verification returned HTTP 200 for `http://192.168.160.204/` and `{"status":"ok","database":"up","cache":"up"}` from `/api/health`.

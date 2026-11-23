@@ -1,0 +1,8 @@
+namespace: qt-go-app
+frontendImage: benisamuel/mydiary-frontend:exam-c4-v1
+backendImage: benisamuel/mydiary-backend:exam-c4-v2
+postgresImage: postgres:16
+redisImage: redis:7-alpine
+postgresStorage: 10Gi
+nodePort: 30080
+javaToolOptions: -Xms128m -Xmx384m
