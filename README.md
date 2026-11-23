@@ -4,7 +4,7 @@ The exam organizers confirmed that the brief's Go, MongoDB, Valkey, and Vite sta
 
 ## Repository layout
 
-- `iac/` — four Proxmox VMs, pending template inspection.
+- `iac/` — Terraform configuration for four Proxmox VMs; the first VM is under verification.
 - `ansible/` — Kubernetes cluster automation, pending the first VM's verified OS.
 - `docker/` — Compose deployment and application Dockerfiles.
 - `k8s/` — Kubernetes application manifests.
@@ -12,6 +12,10 @@ The exam organizers confirmed that the brief's Go, MongoDB, Valkey, and Vite sta
 - `monitoring/` — VM and application evidence captured during deployment.
 
 SSH username, VM IPs, deployment URLs, and screenshot descriptions will be added after the corresponding infrastructure exists. Passwords, private keys, API tokens, and the exam document must stay outside Git.
+
+## Infrastructure status
+
+[Terraform instructions](iac/README.md) document the inspected template, sensitive input handling, first-VM apply, and verification commands. VM `c2-docker-host` (VMID 4201) has been created in `exam-c4` with 4 cores, 4096 MB RAM, a 30 GB disk, and the template's `x86-64-v2-AES` CPU type. Its running guest agent confirms openSUSE Leap 16.0, but `eth0` has no IPv4 address yet; DHCP and SSH verification remain. The three Kubernetes VMs have not been applied. The intended SSH username is `devops`; its private key and password remain outside Git.
 
 ## Docker Compose deployment
 

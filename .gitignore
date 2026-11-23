@@ -20,6 +20,9 @@ crash.*.log
 **/node_modules/
 **/.next/
 **/target/
+.tools/
+*.tfplan
+*.plan
 
 # OS and editor files
 .DS_Store

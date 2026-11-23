@@ -1,0 +1,32 @@
+# These non-secret values match the inspected QT Global exam template.
+proxmox_endpoint = "https://192.168.160.16:8006/"
+node_name        = "Server1"
+pool_id          = "exam-c4"
+template_vmid    = 9004
+datastore_id     = "local-lvm"
+network_bridge   = "vmbr0"
+vm_user          = "devops"
+cpu_cores        = 4
+memory_mb        = 4096
+disk_size_gb     = 30
+
+vm_names = [
+  "c2-docker-host",
+  "c2-k8s-master",
+  "c2-k8s-worker-1",
+  "c2-k8s-worker-2",
+]
+
+vm_ids = {
+  c2-docker-host   = 4201
+  c2-k8s-master    = 4202
+  c2-k8s-worker-1 = 4203
+  c2-k8s-worker-2 = 4204
+}
+
+# The default selection is only c2-docker-host. After verifying its OS,
+# Set enabled_vms to a JSON array of all four names after the first VM is verified.
+enabled_vms = ["c2-docker-host"]
+
+# Do not add real secrets here. Set TF_VAR_proxmox_api_token_secret,
+# TF_VAR_ssh_public_key, and TF_VAR_vm_password in the process environment.
